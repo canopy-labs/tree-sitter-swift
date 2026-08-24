@@ -2,7 +2,7 @@
 #include <string.h>
 #include <wctype.h>
 
-#define TOKEN_COUNT 33
+#define TOKEN_COUNT 34
 
 enum TokenType {
     BLOCK_COMMENT,
@@ -16,6 +16,7 @@ enum TokenType {
     CONJUNCTION_OPERATOR,
     DISJUNCTION_OPERATOR,
     NIL_COALESCING_OPERATOR,
+    DOUBLE_OPTIONAL,
     EQUAL_SIGN,
     EQ_EQ,
     PLUS_THEN_WS,
@@ -377,13 +378,15 @@ static bool eat_operators(
     TSLexer *lexer,
     const bool *valid_symbols,
     bool mark_end,
+    bool token_is_immediate,
     const int32_t prior_char,
     enum TokenType *symbol_result
 ) {
     bool possible_operators[OPERATOR_COUNT];
     uint8_t reserved_operators[RESERVED_OP_COUNT];
     for (int op_idx = 0; op_idx < OPERATOR_COUNT; op_idx++) {
-        possible_operators[op_idx] = valid_symbols[OP_SYMBOLS[op_idx]] && (!prior_char || OPERATORS[op_idx][0] == prior_char);
+        possible_operators[op_idx] = (valid_symbols[OP_SYMBOLS[op_idx]] ||
+                                      (OP_SYMBOLS[op_idx] == NIL_COALESCING_OPERATOR && valid_symbols[DOUBLE_OPTIONAL])) && (!prior_char || OPERATORS[op_idx][0] == prior_char);
     }
     for (int op_idx = 0; op_idx < RESERVED_OP_COUNT; op_idx++) {
         reserved_operators[op_idx] = !prior_char || RESERVED_OPS[op_idx][0] == prior_char;
@@ -521,7 +524,19 @@ static bool eat_operators(
                 }
             }
         }
-        *symbol_result = OP_SYMBOLS[full_match];
+        enum TokenType matched_symbol = OP_SYMBOLS[full_match];
+        if (
+            matched_symbol == NIL_COALESCING_OPERATOR &&
+            valid_symbols[DOUBLE_OPTIONAL]
+        ) {
+            if (!token_is_immediate && !valid_symbols[NIL_COALESCING_OPERATOR]) {
+                return false;
+            }
+            matched_symbol = token_is_immediate
+                             ? DOUBLE_OPTIONAL
+                             : NIL_COALESCING_OPERATOR;
+        }
+        *symbol_result = matched_symbol;
         return true;
     }
 
@@ -671,6 +686,7 @@ static enum ParseDirective eat_whitespace(
                                 lexer,
                                 valid_symbols,
                                 /* mark_end */ false,
+                                /* token_is_immediate */ false,
                                 '\0',
                                 &operator_result
                             );
@@ -868,6 +884,7 @@ bool tree_sitter_swift_external_scanner_scan(
     struct ScannerState *state = (struct ScannerState *)payload;
 
     // Consume any whitespace at the start.
+    bool token_is_immediate = !should_treat_as_wspace(lexer->lookahead);
     enum TokenType ws_result;
     enum ParseDirective ws_directive = eat_whitespace(lexer, valid_symbols, &ws_result);
     if (ws_directive == STOP_PARSING_TOKEN_FOUND) {
@@ -899,6 +916,7 @@ bool tree_sitter_swift_external_scanner_scan(
                             lexer,
                             valid_symbols,
                             /* mark_end */ !has_ws_result,
+                            token_is_immediate,
                             comment == CONTINUE_PARSING_SLASH_CONSUMED ? '/' : '\0',
                             &operator_result
                         );
