@@ -969,12 +969,14 @@ module.exports = grammar({
         PRECS.tuple,
         seq(
           "(",
-          sep1Opt(
-            seq(
-              optional(seq(field("name", $.simple_identifier), ":")),
-              field("value", $._expression)
-            ),
-            ","
+          optional(
+            sep1Opt(
+              seq(
+                optional(seq(field("name", $.simple_identifier), ":")),
+                field("value", $._expression)
+              ),
+              ","
+            )
           ),
           ")"
         )
