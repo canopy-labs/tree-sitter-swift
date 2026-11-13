@@ -6,11 +6,13 @@
 #   7d44ca9 -- the empty tuple `()` as an expression (`completion(.success(()))`,
 #              `f(x: ())`, `(1, ())`). Stock 0.7.3 (and 0.7.4) parses each as a
 #              MISSING node, so the engine refused the whole file at input.
+#   f7523ad -- `x as? T ?? d` (upstream b5fa894, ported onto the 0.7.3 scanner):
+#              an ERROR node in stock 0.7.3, so the engine refused the file.
 #
 # It is 0.7.3, not 0.7.4, on purpose: the engine pins 0.7.3 exactly (0.7.4 moves
 # the `!` of a negated method call out of the callee), and the Action's
 # post-rewrite parse gate must see the engine's node shapes. PyPI has no such
-# build. The version carries a PEP 440 local segment (`0.7.3+canopy.1`): PyPI
+# build. The version carries a PEP 440 local segment (`0.7.3+canopy.2`): PyPI
 # forbids local versions, so the Action's exact pin can only be satisfied from
 # this release. Bump the local segment whenever the engine's pinned commit moves.
 #
@@ -65,7 +67,7 @@ jobs:
       contents: write
     # Tags only. A `workflow_dispatch` run is for checking the build still
     # works, and `GITHUB_REF_NAME` is then the BRANCH -- so without this the
-    # dispatch would try to cut a release named `canopy/wheels-0.7.3-canopy.1`.
+    # dispatch would try to cut a release named `canopy/wheels-0.7.3-canopy.2`.
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
