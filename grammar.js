@@ -1301,14 +1301,14 @@ module.exports = grammar({
         ),
         optional($.where_clause)
       ),
-    // `try`/`await` on a bare name or member in a condition: `if let x = try? await task { ... }`,
-    // `while let x = await queue { ... }`, `if try await ready { ... }`, and a `switch` subject
-    // (`switch await state { ... }`). Through `_expression`, the `{`
-    // after the name is taken for a trailing closure passed to it, since `try` and `await` reach a call
-    // through their own high-precedence routes; Swift never reads a trailing closure in a condition.
-    // These productions only exist in a condition, and only the `{`, `,` and `else` that may end one
-    // decide between them and `_expression`; every other shape (`try a == b`, `try? f()`, `await a.b()`)
-    // still goes through `_expression`. The trees are the same `try_expression`/`await_expression`.
+    // `try`/`await` on a bare name or member in a condition (`if let x = try? await task { ... }`,
+    // `while let x = await queue { ... }`, `if await item.isReady { ... }`) and in a `switch` subject
+    // (`switch await state { ... }`). Through `_expression`, the `{` after the name was taken for a
+    // trailing closure passed to it, since `try` and `await` reach a call through their own
+    // higher-precedence routes, and Swift never reads a trailing closure there. These productions
+    // exist only in those positions, and only the `{`, `,` or `else` that may end one decides between
+    // them and `_expression`: every other shape (`try a == b`, `try? f()`, `await a.b()`) still goes
+    // through `_expression`. The trees are the same `try_expression` and `await_expression`.
     _condition_effect_on_name: ($) =>
       prec(
         PRECS.condition_effect,

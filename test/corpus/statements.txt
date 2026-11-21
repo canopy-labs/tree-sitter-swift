@@ -1778,6 +1778,49 @@ func load() async {
                   (value_arguments))))))))))
 
 ================================================================================
+If await on a member
+================================================================================
+
+func ready(_ items: [Item]) async -> Bool {
+    for item in items {
+        if await item.isReady { return true }
+    }
+    return false
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (simple_identifier)
+    (parameter
+      (simple_identifier)
+      (simple_identifier)
+      (array_type
+        (user_type
+          (type_identifier))))
+    (user_type
+      (type_identifier))
+    (function_body
+      (statements
+        (for_statement
+          (pattern
+            (simple_identifier))
+          (simple_identifier)
+          (statements
+            (if_statement
+              (await_expression
+                (navigation_expression
+                  (simple_identifier)
+                  (navigation_suffix
+                    (simple_identifier))))
+              (statements
+                (control_transfer_statement
+                  (boolean_literal))))))
+        (control_transfer_statement
+          (boolean_literal))))))
+
+================================================================================
 Try and await keep a trailing closure outside a condition
 ================================================================================
 
