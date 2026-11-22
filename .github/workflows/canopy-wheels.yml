@@ -1,0 +1,101 @@
+# Build the Python wheels the Featureflip flag-cleanup Action installs.
+#
+# This branch is upstream main at fef1236 (after 0.7.4, unreleased) plus FOUR changes
+# of ours. (1) canopy/swift-try-await-bare-name-2 (a12bb23, b163b23, 03cf487): `try`/`await`
+# on a bare name or member in a condition or switch subject (`if let a = try? await
+# task {`, `while let d = await queue {`, `switch await state {`) no longer reads the
+# `{` as a trailing closure. Upstream PR alex-pinkus/tree-sitter-swift#659 (issue #642),
+# merged as bad7fa3. (2) canopy/swift-if-trailing-closure-newline (735da3b), scanner
+# only: a `(` or `[` starting the line after a condition's block (`if f() { return }`
+# NEWLINE `[1].forEach { ... }`) is a new statement, not a subscript of the block read
+# as a trailing closure. Upstream PR alex-pinkus/tree-sitter-swift#660. (3)
+# canopy/swift-await-condition-operators (eefd039): `await` on an operator expression
+# in a condition (`if await flags.isEnabled && ready {`) parses, through the
+# binary-expression route `try` already has. Upstream PR alex-pinkus/tree-sitter-swift#662.
+# (4) the same branch (dbc0680), scanner only: the rule of (2) also ends a member
+# access read as a type, so `let p = o.q` NEWLINE `(a ?? b).run()` is two statements,
+# not the constructor call `o.q(a ?? b)`. Added to upstream PR #660. Drop each once
+# upstream releases it.
+#
+# Upstream main does not commit `src/parser.c`: 574322c adds it for fef1236 and
+# a12bb23, 03cf487 and eefd039 regenerate it for the patches, all with tree-sitter-cli 0.26.9.
+# 03cf487 refactors the patch's rules without changing any tree: the first version
+# made tree-sitter's query analysis up to ~400x slower for some patterns. The engine
+# (polyglot-piranha) pins this branch's grammar commit, so the Action's post-rewrite
+# parse gate sees the engine's node shapes. The version carries a PEP 440 local
+# segment (`0.7.4+canopy.6`): PyPI forbids local versions, so the Action's exact pin
+# can only be satisfied from this release. Bump the local segment whenever the
+# engine's pinned commit moves.
+#
+# Upstream's tag-triggered workflows (release, publish-pypi, publish-rust,
+# generate-static-grammar) are removed on this branch so a `v*-canopy.*` tag
+# runs this one only.
+name: Canopy wheels
+
+on:
+  push:
+    tags: ['v*-canopy.*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners for both arches -- no QEMU. The arm64 runner is
+          # free on public repositories, which this fork is.
+          - { runner: ubuntu-latest,    arch: x86_64 }
+          - { runner: ubuntu-24.04-arm, arch: aarch64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2
+        env:
+          # `build = "cp310-*"` in pyproject.toml plus setup.py's BdistWheel tag
+          # override (`cp38-abi3`, limited API 3.8) means ONE abi3 wheel per
+          # arch, installable on 3.8+.
+          # The Action runs 3.12; pinning the build to cp310 keeps that free.
+          CIBW_ARCHS_LINUX: ${{ matrix.arch }}
+          # manylinux only. The Action's image is python:3.12-slim (glibc), and
+          # a musllinux build would double the matrix for a wheel nothing installs.
+          CIBW_SKIP: '*-musllinux_*'
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: wheels-${{ matrix.arch }}
+          path: wheelhouse/*.whl
+
+  release:
+    needs: wheels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Tags only. A `workflow_dispatch` run is for checking the build still
+    # works, and `GITHUB_REF_NAME` is then the BRANCH -- so without this the
+    # dispatch would try to cut a release named `canopy/wheels-0.7.4-canopy.3`.
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show what will be published
+        run: ls -la dist
+
+      # Both arches or nothing: `needs` already gates this on the whole matrix,
+      # so a partial release cannot be produced by one arch failing.
+      - name: Publish the wheels on this tag's release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.whl \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Upstream tree-sitter-swift main (fef1236, after 0.7.4) with its generated parser, the grammar the polyglot-piranha engine pins, built as abi3 manylinux wheels for the Featureflip flag-cleanup Action. Not a PyPI release: the version carries a PEP 440 local segment so it can only be installed by exact pin."
